@@ -54,7 +54,7 @@ table { border-collapse: collapse; width: 100%; table-layout: fixed; }
 col.col-room  { width: 58px; } col.col-slot { width: 26px; } col.col-name { width: 95px; }
 col.col-phone { width: 112px; } col.col-fee { width: 88px; } col.col-paid { width: 82px; }
 col.col-dep   { width: 65px; } col.col-in { width: 94px; } col.col-pday { width: 56px; }
-col.col-out   { width: 94px; } col.col-memo { width: 105px; } col.col-act { width: 72px; }
+col.col-out   { width: 94px; } col.col-memo { width: 105px; } col.col-act { width: 76px; }
 
 thead th { background: var(--surface2); color: var(--text2); font-size: 11px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; padding: 9px 6px; border: 1px solid var(--border); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 th.sortable { cursor: pointer; user-select: none; }
@@ -274,11 +274,13 @@ const DATA_DOC = doc(db, 'roomfee', 'data2');
 // data[roomNum] = { slots:[{id,name,phone,fee,payday,deposit,in,out,memo,paid:{YYYY-MM}}], history:[...] }
 let data = {};
 let dbReady = false;
+let skipNextRender = false;
 
 function startSync() {
   onSnapshot(DATA_DOC, snap => {
     if (snap.exists()) { Object.keys(data).forEach(k=>delete data[k]); Object.assign(data, snap.data()); }
     if (!dbReady) { dbReady=true; setSyncStatus('☁ 동기화됨','var(--green)'); renderMonth(); renderTable(); }
+    else if (skipNextRender) { skipNextRender=false; }
     else renderTable();
   }, err => { setSyncStatus('⚠ 연결 오류','var(--red)'); console.error(err); });
 }
@@ -301,7 +303,8 @@ function monthKey(y,m){if(y===undefined)y=curYear;if(m===undefined)m=curMonthIdx
 function getSlots(roomNum) {
   const slots=(data[roomNum]?.slots)||[];
   return slots.filter(s=>{
-    if(!s.name) return false;
+    // 이름 없어도 새로 추가된 슬롯은 표시 (id만 있으면 OK)
+    if(!s.id) return false;
     if(s.out){const oYM=new Date(s.out).getFullYear()*12+new Date(s.out).getMonth();if(curYear*12+curMonthIdx>oYM)return false;}
     return true;
   });
@@ -321,8 +324,9 @@ function addSlot(roomNum){
   if(!data[roomNum].history)data[roomNum].history=[];
   const id=Date.now()+'_'+Math.random().toString(36).slice(2,5);
   data[roomNum].slots.push({id,name:'',phone:'',fee:'',payday:'',deposit:'',in:'',out:'',memo:'',paid:{}});
-  save();renderTable();
-  // 새로 생긴 행의 이름 입력칸에 포커스
+  skipNextRender=true;
+  save();
+  renderTable();
   setTimeout(()=>{
     const rows=document.querySelectorAll(`tr[data-room="${roomNum}"]`);
     const last=rows[rows.length-1];
@@ -401,13 +405,17 @@ function buildRow(roomNum,fl,slot,slotIdx=0,total=1){
   tr.dataset.room=roomNum;
   if(slot?.name)tr.dataset.name=slot.name;
 
-  if(!slot||!slot.name){
+  if(!slot){
     tr.innerHTML=`
-      <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);padding:0 5px">${roomNum}</span></td>
+      <td>
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;gap:3px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent)">${roomNum}</span>
+          <button class="act-btn" onclick="addSlot(${roomNum})" title="입실자 추가" style="color:var(--accent);font-size:14px;font-weight:700;padding:1px 3px">＋</button>
+        </div>
+      </td>
       <td><span style="font-size:10px;color:var(--text3)">—</span></td>
       <td colspan="9" style="color:var(--text3);font-size:12px;text-align:left;padding-left:12px">공실</td>
       <td><div class="act-cell">
-        <button class="act-btn" onclick="addSlot(${roomNum})" title="입실자 추가" style="color:var(--accent);font-size:16px;font-weight:700">＋</button>
         <button class="act-btn history-btn" onclick="openHistory(${roomNum})" title="히스토리">📋</button>
       </div></td>`;
     return tr;
@@ -430,7 +438,12 @@ function buildRow(roomNum,fl,slot,slotIdx=0,total=1){
     :`<input class="editable" value="" placeholder="전화번호" style="width:100%" onchange="quickSave(${roomNum},'${slot.id}','phone',this.value)">`;
 
   tr.innerHTML=`
-    <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);padding:0 4px">${roomNum}</span></td>
+    <td>
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;gap:3px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent)">${roomNum}</span>
+        ${slotIdx===0?`<button class="act-btn" onclick="addSlot(${roomNum})" title="입실자 추가" style="color:var(--accent);font-size:14px;font-weight:700;padding:1px 3px">＋</button>`:''}
+      </div>
+    </td>
     <td><span style="font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace">${slotIdx+1}</span></td>
     <td><input class="editable" value="${esc(slot.name||'')}" placeholder="이름" onchange="quickSave(${roomNum},'${slot.id}','name',this.value)"></td>
     <td>${phoneCell}</td>
@@ -450,8 +463,8 @@ function buildRow(roomNum,fl,slot,slotIdx=0,total=1){
     <td><input class="editable" value="${esc(slot.memo||'')}" placeholder="메모" onchange="quickSave(${roomNum},'${slot.id}','memo',this.value)"></td>
     <td><div class="act-cell">
       <button class="act-btn" onclick="openModal(${roomNum},'${slot.id}')" title="편집">✎</button>
-      ${slotIdx===0?`<button class="act-btn" onclick="addSlot(${roomNum})" title="입실자 추가" style="color:var(--accent);font-size:16px;font-weight:700">＋</button>`:'<span style="width:22px"></span>'}
       <button class="act-btn history-btn" onclick="openHistory(${roomNum})" title="히스토리">📋</button>
+      <button class="act-btn" onclick="deleteSlot(${roomNum},'${slot.id}')" title="삭제" style="color:var(--red)">✕</button>
     </div></td>`;
   return tr;
 }
@@ -460,13 +473,24 @@ function esc(s){return String(s).replace(/"/g,'&quot;');}
 
 // ── QUICK ACTIONS ──
 function quickSave(room,slotId,key,val){
+  skipNextRender=true;
   updateSlot(room,slotId,{[key]:val});
   updateStats();updateUnpaidPanel();
 }
 function fmtFeeBlur(el,room,slotId){const n=parseInt(el.value.replace(/,/g,''))||0;updateSlot(room,slotId,{fee:n||''});el.value=n?n.toLocaleString():'';}
 function savePayday(room,slotId,val){const n=parseInt(val);updateSlot(room,slotId,{payday:(n>=1&&n<=31)?n:''});if(sortByPayDay)renderTable();}
 
-function cyclePaid(room,slotId,container){
+function deleteSlot(roomNum, slotId){
+  const rd=data[roomNum]; if(!rd?.slots) return;
+  const slot=rd.slots.find(s=>s.id===slotId);
+  const name=slot?.name||'빈 슬롯';
+  if(!confirm(`${roomNum}호 "${name}" 라인을 삭제할까요?\n(히스토리에 저장되지 않습니다)`)) return;
+  rd.slots=rd.slots.filter(s=>s.id!==slotId);
+  skipNextRender=true;
+  save(); renderTable();
+  showToast(`🗑 ${roomNum}호 라인 삭제됨`);
+}
+
   const badge=container.querySelector('.paid-badge');
   const cur=getPaid(room,slotId);
   const next=cur==='empty'?'unpaid':cur==='unpaid'?'paid':'empty';
@@ -728,7 +752,7 @@ function showToast(msg,cls=''){const t=document.getElementById('toast');t.textCo
 // ── WINDOW EXPORTS ──
 Object.assign(window,{changeMonth,filterFloor,toggleSort,toggleUnpaidPanel,exportCSV,
   openImport,closeImport,closeImportBg,handleDrop,handleFileSelect,confirmImport,
-  searchTable,quickSave,fmtFeeBlur,cyclePaid,cycleDeposit,savePayday,addSlot,
+  searchTable,quickSave,fmtFeeBlur,cyclePaid,cycleDeposit,savePayday,addSlot,deleteSlot,
   openModal,closeModal,closeModalBg,saveModal,checkoutSlot,
   openHistory,closeHistory,closeHistoryBg});
 
