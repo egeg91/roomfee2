@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>입실료 관리 시스템 - 데이터 복구 및 입력 수정</title>
+<title>입실료 관리 시스템 (2번 기반 복구본)</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root { --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2e3350; --accent: #4f8ef7; --accent2: #7c5cfc; --green: #34c77b; --red: #f05c5c; --text: #e8eaf6; --text2: #8b90b8; --row-h: 48px; }
@@ -31,16 +31,15 @@
   .paid-badge { border-radius: 5px; padding: 3px 10px; font-size: 11px; font-weight: 700; cursor: pointer; }
   .paid-badge.paid { background: rgba(52,199,123,0.15); color: var(--green); border: 1px solid rgba(52,199,123,0.3); }
   .paid-badge.unpaid { background: rgba(240,92,92,0.15); color: var(--red); border: 1px solid rgba(240,92,92,0.3); }
-  .refresh-btn { background: var(--accent); color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🏢 입실료 관리 (복구 모드)</h1>
+  <h1>🏢 입실료 관리 (2번 복구 버전)</h1>
   <div style="margin-left:auto; display:flex; gap:10px;">
-    <button class="refresh-btn" onclick="forceReload()">🔄 강제 새로고침</button>
     <div class="stat-chip" id="syncStatus">⏳ 연결 중...</div>
+    <div class="stat-chip">입주 <span id="stat-occupied" style="color:var(--accent); margin-left:4px">0</span></div>
   </div>
 </header>
 
@@ -58,7 +57,7 @@
 </div>
 
 <div class="table-wrapper">
-  <table>
+  <table id="mainTable">
     <thead>
       <tr>
         <th style="width:85px">호실</th><th style="width:100px">이름</th><th style="width:120px">전화번호</th>
@@ -72,20 +71,12 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// [중요] 기존 파일에 있던 파이어베이스 설정값을 그대로 사용합니다.
-const firebaseConfig = { 
-  apiKey: "AIzaSyDBZSWxnt6L72Xns8298aR3V5lHoXV--mg", 
-  authDomain: "roomfee.firebaseapp.com", 
-  projectId: "roomfee", 
-  storageBucket: "roomfee.firebasestorage.app", 
-  messagingSenderId: "493536101790", 
-  appId: "1:493536101790:web:895e43e5506c8f6b05c28f" 
-};
+const firebaseConfig = { apiKey: "AIzaSyDBZSWxnt6L72Xns8298aR3V5lHoXV--mg", authDomain: "roomfee.firebaseapp.com", projectId: "roomfee", storageBucket: "roomfee.firebasestorage.app", messagingSenderId: "493536101790", appId: "1:493536101790:web:895e43e5506c8f6b05c28f" };
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
-const DATA_DOC = doc(db, 'roomfee', 'data'); // 기존 파일 경로 확인
+const DATA_DOC = doc(db, 'roomfee', 'data');
 
 const ROOMS = [];
 const FLOORS = { 3: 14, 4: 13, 5: 15, 6: 13 };
@@ -98,23 +89,23 @@ let data = {};
 
 function monthKey(y=curYear, m=curMonthIdx) { return `${y}-${String(m+1).padStart(2,'0')}`; }
 
-// 승계 및 데이터 표시 함수
+// [핵심] 2번 방식 그대로: 현재 데이터가 없으면 전달 정보를 가져옴
 function getDisplayData(roomNum, suffix = '') {
   const mk = monthKey();
   const fullKey = suffix ? `${mk}_${suffix}` : mk;
   if (data[roomNum] && data[roomNum][fullKey]) return data[roomNum][fullKey];
   
-  if (!suffix) {
+  if (!suffix) { // 메인 라인 승계 로직
     let m = curMonthIdx - 1, y = curYear;
     if (m < 0) { m = 11; y--; }
     const prevKey = `${y}-${String(m+1).padStart(2,'0')}`;
     const roomObj = data[roomNum] || {};
     
-    // 전달 추가입실 정보 확인
-    const subKeys = Object.keys(roomObj).filter(k => k.startsWith(prevKey + '_sub')).sort();
-    if (subKeys.length > 0) return { ...roomObj[subKeys[subKeys.length-1]], paid: '' };
+    // 전달 서브라인 승계
+    const lastSubKey = Object.keys(roomObj).filter(k => k.startsWith(prevKey + '_sub')).sort().pop();
+    if (lastSubKey) return { ...roomObj[lastSubKey], paid: '' };
     
-    // 전달 메인 정보 승계
+    // 전달 메인라인 승계
     if (roomObj[prevKey]) {
       const prev = roomObj[prevKey];
       if (prev.out) {
@@ -127,7 +118,89 @@ function getDisplayData(roomNum, suffix = '') {
   return {};
 }
 
-// 강제 새로고침 함수
-window.forceReload = async () => {
-  document.getElementById('syncStatus').textContent = '🔄 갱신 중...';
-  const snap = await
+// [수정됨] 추가된 라인도 자동으로 저장되도록 하는 함수
+async function quickSave(roomNum, suffix, patch) {
+  const mk = monthKey();
+  const fullKey = suffix ? `${mk}_${suffix}` : mk;
+  if (!data[roomNum]) data[roomNum] = {};
+  
+  // 현재 화면의 데이터를 바탕으로 패치 (승계 데이터 포함)
+  const current = data[roomNum][fullKey] || getDisplayData(roomNum, suffix);
+  data[roomNum][fullKey] = { ...current, ...patch };
+  
+  await setDoc(DATA_DOC, data);
+}
+
+function render() {
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  const mk = monthKey();
+  const floors = curFloor === 'all' ? [3,4,5,6] : [curFloor];
+
+  floors.forEach(fl => {
+    tbody.innerHTML += `<tr class="floor-header"><td colspan="10">${fl}층</td></tr>`;
+    ROOMS.filter(r => r.floor === fl).forEach(r => {
+      tbody.appendChild(createRow(r.room, ''));
+      // 서브 라인 출력
+      for(let i=1; i<=3; i++) {
+        if (data[r.room] && data[r.room][`${mk}_sub${i}`]) tbody.appendChild(createRow(r.room, `sub${i}`));
+      }
+    });
+  });
+  
+  // 통계 및 월 표시
+  let count = 0;
+  ROOMS.forEach(r => { if(getDisplayData(r.room, '').name) count++; });
+  document.getElementById('stat-occupied').textContent = count;
+  document.getElementById('curMonth').textContent = `${curYear}.${String(curMonthIdx+1).padStart(2,'0')}`;
+}
+
+function createRow(roomNum, suffix) {
+  const d = getDisplayData(roomNum, suffix);
+  const tr = document.createElement('tr');
+  if (suffix) tr.className = 'sub-line';
+  
+  tr.innerHTML = `
+    <td><span class="room-num">${suffix ? '' : roomNum}</span> ${!suffix ? `<button class="add-btn" onclick="addNew('${roomNum}')">+</button>` : ''}</td>
+    <td><input class="editable" value="${d.name||''}" onblur="window.quickSave('${roomNum}','${suffix}',{name:this.value})"></td>
+    <td><input class="editable" value="${d.phone||''}" onblur="window.quickSave('${roomNum}','${suffix}',{phone:this.value})"></td>
+    <td><input class="editable" value="${(d.fee||'').toLocaleString()}" onblur="window.saveFee('${roomNum}','${suffix}',this.value)"></td>
+    <td><span class="paid-badge ${d.paid||'empty'}" onclick="window.togglePaid('${roomNum}','${suffix}')">${d.paid==='paid'?'완료':d.paid==='unpaid'?'미납':'—'}</span></td>
+    <td><input class="editable" type="date" value="${d.in||''}" onchange="window.quickSave('${roomNum}','${suffix}',{in:this.value})"></td>
+    <td><input class="editable" type="number" value="${d.payday||''}" onblur="window.quickSave('${roomNum}','${suffix}',{payday:this.value})"></td>
+    <td><input class="editable" type="date" value="${d.out||''}" onchange="window.quickSave('${roomNum}','${suffix}',{out:this.value})"></td>
+    <td><input class="editable" value="${d.memo||''}" onblur="window.quickSave('${roomNum}','${suffix}',{memo:this.value})"></td>
+    <td>${suffix ? `<button class="add-btn" onclick="window.removeSub('${roomNum}','${suffix}')">×</button>` : ''}</td>
+  `;
+  return tr;
+}
+
+// 전역 함수 등록
+window.quickSave = quickSave;
+window.saveFee = (r, s, v) => { const n = parseInt(v.replace(/,/g,'')) || ''; quickSave(r, s, { fee: n }); };
+window.togglePaid = (r, s) => {
+  const cur = getDisplayData(r, s).paid || 'empty';
+  const next = cur === 'empty' ? 'unpaid' : cur === 'unpaid' ? 'paid' : 'empty';
+  quickSave(r, s, { paid: next });
+};
+window.addNew = (r) => {
+  const mk = monthKey();
+  let idx = 1;
+  while(data[r] && data[r][`${mk}_sub${idx}`]) idx++;
+  quickSave(r, `sub${idx}`, { name: '새입실자', in: new Date().toISOString().split('T')[0] });
+};
+window.removeSub = (r, s) => { if(confirm('삭제하시겠습니까?')) { delete data[r][`${monthKey()}_${s}`]; setDoc(DATA_DOC, data); } };
+window.changeMonth = (dir) => { curMonthIdx += dir; if(curMonthIdx>11){curMonthIdx=0;curYear++;} else if(curMonthIdx<0){curMonthIdx=11;curYear--;} render(); };
+window.filterFloor = (fl, btn) => { curFloor = fl; document.querySelectorAll('.floor-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); render(); };
+
+onSnapshot(DATA_DOC, (snap) => {
+  if (snap.exists()) {
+    data = snap.data();
+    document.getElementById('syncStatus').textContent = '☁ 연결됨';
+    document.getElementById('syncStatus').style.color = 'var(--green)';
+    render();
+  }
+});
+</script>
+</body>
+</html>
