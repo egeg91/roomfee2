@@ -279,8 +279,8 @@ let skipNextRender = false;
 function startSync() {
   onSnapshot(DATA_DOC, snap => {
     if (snap.exists()) { Object.keys(data).forEach(k=>delete data[k]); Object.assign(data, snap.data()); }
-    if (!dbReady) { dbReady=true; setSyncStatus('☁ 동기화됨','var(--green)'); renderMonth(); renderTable(); }
-    else if (skipNextRender) { skipNextRender=false; }
+    if (!dbReady) { dbReady=true; setSyncStatus('☁ 동기화됨','var(--green)'); }
+    if (skipNextRender) { skipNextRender=false; }
     else renderTable();
   }, err => { setSyncStatus('⚠ 연결 오류','var(--red)'); console.error(err); });
 }
@@ -756,6 +756,9 @@ Object.assign(window,{changeMonth,filterFloor,toggleSort,toggleUnpaidPanel,expor
   openModal,closeModal,closeModalBg,saveModal,checkoutSlot,
   openHistory,closeHistory,closeHistoryBg});
 
+// ── INIT ──
+renderMonth();
+renderTable();
 startSync();
 </script>
 </body>
