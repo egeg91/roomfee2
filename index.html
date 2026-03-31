@@ -491,6 +491,7 @@ function deleteSlot(roomNum, slotId){
   showToast(`🗑 ${roomNum}호 라인 삭제됨`);
 }
 
+function cyclePaid(room,slotId,container){
   const badge=container.querySelector('.paid-badge');
   const cur=getPaid(room,slotId);
   const next=cur==='empty'?'unpaid':cur==='unpaid'?'paid':'empty';
