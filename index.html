@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>입실료 관리 시스템 (입력 및 승계 완벽 수정)</title>
+<title>입실료 관리 시스템 - 데이터 복구 및 입력 수정</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2e3350; --accent: #4f8ef7; --accent2: #7c5cfc; --green: #34c77b; --red: #f05c5c; --yellow: #f5a623; --text: #e8eaf6; --text2: #8b90b8; --text3: #555a80; --row-h: 48px; }
+  :root { --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2e3350; --accent: #4f8ef7; --accent2: #7c5cfc; --green: #34c77b; --red: #f05c5c; --text: #e8eaf6; --text2: #8b90b8; --row-h: 48px; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
   header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
@@ -26,20 +26,21 @@
   .editable { width: 100%; height: 100%; background: transparent; border: none; color: var(--text); font-size: 13px; text-align: center; outline: none; }
   .editable:focus { background: rgba(79,142,247,0.1); }
   .room-num { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--accent); }
-  .add-btn { background: none; border: 1px solid var(--border); color: var(--text3); border-radius: 4px; width: 20px; height: 20px; cursor: pointer; }
+  .add-btn { background: none; border: 1px solid var(--border); color: var(--text2); border-radius: 4px; width: 22px; height: 22px; cursor: pointer; font-size: 14px; }
   tr.sub-line { background: rgba(79, 142, 247, 0.08); }
   .paid-badge { border-radius: 5px; padding: 3px 10px; font-size: 11px; font-weight: 700; cursor: pointer; }
   .paid-badge.paid { background: rgba(52,199,123,0.15); color: var(--green); border: 1px solid rgba(52,199,123,0.3); }
   .paid-badge.unpaid { background: rgba(240,92,92,0.15); color: var(--red); border: 1px solid rgba(240,92,92,0.3); }
+  .refresh-btn { background: var(--accent); color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🏢 입실료 관리 (입력 수정 완료)</h1>
+  <h1>🏢 입실료 관리 (복구 모드)</h1>
   <div style="margin-left:auto; display:flex; gap:10px;">
+    <button class="refresh-btn" onclick="forceReload()">🔄 강제 새로고침</button>
     <div class="stat-chip" id="syncStatus">⏳ 연결 중...</div>
-    <div class="stat-chip">입주 <span id="stat-occupied" style="color:var(--accent); margin-left:4px">0</span></div>
   </div>
 </header>
 
@@ -60,9 +61,9 @@
   <table>
     <thead>
       <tr>
-        <th style="width:80px">호실</th><th style="width:100px">이름</th><th style="width:120px">전화번호</th>
-        <th style="width:100px">입실료</th><th style="width:90px">상태</th><th style="width:100px">입실일</th>
-        <th style="width:60px">날짜</th><th style="width:100px">퇴실일</th><th>메모</th><th style="width:50px"></th>
+        <th style="width:85px">호실</th><th style="width:100px">이름</th><th style="width:120px">전화번호</th>
+        <th style="width:100px">입실료</th><th style="width:90px">상태</th><th style="width:110px">입실일</th>
+        <th style="width:60px">날짜</th><th style="width:110px">퇴실일</th><th>메모</th><th style="width:50px"></th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
@@ -71,12 +72,20 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-const firebaseConfig = { apiKey: "AIzaSyDBZSWxnt6L72Xns8298aR3V5lHoXV--mg", authDomain: "roomfee.firebaseapp.com", projectId: "roomfee", storageBucket: "roomfee.firebasestorage.app", messagingSenderId: "493536101790", appId: "1:493536101790:web:895e43e5506c8f6b05c28f" };
+// [중요] 기존 파일에 있던 파이어베이스 설정값을 그대로 사용합니다.
+const firebaseConfig = { 
+  apiKey: "AIzaSyDBZSWxnt6L72Xns8298aR3V5lHoXV--mg", 
+  authDomain: "roomfee.firebaseapp.com", 
+  projectId: "roomfee", 
+  storageBucket: "roomfee.firebasestorage.app", 
+  messagingSenderId: "493536101790", 
+  appId: "1:493536101790:web:895e43e5506c8f6b05c28f" 
+};
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
-const DATA_DOC = doc(db, 'roomfee', 'data');
+const DATA_DOC = doc(db, 'roomfee', 'data'); // 기존 파일 경로 확인
 
 const ROOMS = [];
 const FLOORS = { 3: 14, 4: 13, 5: 15, 6: 13 };
@@ -89,26 +98,23 @@ let data = {};
 
 function monthKey(y=curYear, m=curMonthIdx) { return `${y}-${String(m+1).padStart(2,'0')}`; }
 
-// [수정된 로직] 입력 중인 데이터를 우선시하고, 없을 때만 전달에서 가져옴
-function getRoomDisplayData(roomNum, suffix = '') {
+// 승계 및 데이터 표시 함수
+function getDisplayData(roomNum, suffix = '') {
   const mk = monthKey();
   const fullKey = suffix ? `${mk}_${suffix}` : mk;
-  
-  // 1. 현재 달에 실제 데이터가 있으면 그것을 반환
   if (data[roomNum] && data[roomNum][fullKey]) return data[roomNum][fullKey];
   
-  // 2. 데이터가 아예 없을 때만 전달 승계 로직 작동 (메인 라인인 경우)
   if (!suffix) {
     let m = curMonthIdx - 1, y = curYear;
     if (m < 0) { m = 11; y--; }
     const prevKey = `${y}-${String(m+1).padStart(2,'0')}`;
     const roomObj = data[roomNum] || {};
     
-    // 전달 서브라인 승계
-    const lastSubKey = Object.keys(roomObj).filter(k => k.startsWith(prevKey + '_sub')).sort().pop();
-    if (lastSubKey) return { ...roomObj[lastSubKey], paid: '' };
+    // 전달 추가입실 정보 확인
+    const subKeys = Object.keys(roomObj).filter(k => k.startsWith(prevKey + '_sub')).sort();
+    if (subKeys.length > 0) return { ...roomObj[subKeys[subKeys.length-1]], paid: '' };
     
-    // 전달 메인라인 승계
+    // 전달 메인 정보 승계
     if (roomObj[prevKey]) {
       const prev = roomObj[prevKey];
       if (prev.out) {
@@ -121,30 +127,7 @@ function getRoomDisplayData(roomNum, suffix = '') {
   return {};
 }
 
-async function save(roomNum, suffix, patch) {
-  const mk = monthKey();
-  const fullKey = suffix ? `${mk}_${suffix}` : mk;
-  if (!data[roomNum]) data[roomNum] = {};
-  
-  // 현재 화면에 표시된 데이터(승계값 포함)를 바탕으로 새 객체 생성
-  const current = data[roomNum][fullKey] || getRoomDisplayData(roomNum, suffix);
-  data[roomNum][fullKey] = { ...current, ...patch };
-  
-  await setDoc(DATA_DOC, data);
-}
-
-function render() {
-  const tbody = document.getElementById('tbody');
-  tbody.innerHTML = '';
-  const mk = monthKey();
-  const floors = curFloor === 'all' ? [3,4,5,6] : [curFloor];
-
-  floors.forEach(fl => {
-    tbody.innerHTML += `<tr class="floor-header"><td colspan="10">${fl}층</td></tr>`;
-    ROOMS.filter(r => r.floor === fl).forEach(r => {
-      tbody.appendChild(createRow(r.room, ''));
-      for(let i=1; i<=3; i++) {
-        if (data[r.room] && data[r.room][`${mk}_sub${i}`]) {
-          tbody.appendChild(createRow(r.room, `sub${i}`));
-        }
-      }
+// 강제 새로고침 함수
+window.forceReload = async () => {
+  document.getElementById('syncStatus').textContent = '🔄 갱신 중...';
+  const snap = await
